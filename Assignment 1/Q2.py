@@ -4,7 +4,6 @@ from gymnasium.envs.toy_text.frozen_lake import generate_random_map
 import numpy as np
 import torch.nn as nn
 from Q1 import frozenlake_agent
-from numpy import random
 
 class q_model3(nn.Module):
     def __init__(self, state_size, action_size):
@@ -37,60 +36,194 @@ class q_model5(nn.Module):
         return x
     
 
-class carpole_env(gym.Env):
-    def __init__(self,env,model,learn_rate:float,epsilon:float,epsilon_decay,min_epsilon,gamma:float,episodes:int=1000):
-        """Initialize the Q-learning agent for FrozenLake environment.
-        Args:
-            env (gym.Env): The FrozenLake environment.
-            learn_rate (float): Learning rate for Q-learning updates.
-            epsilon (float): Exploration rate (epsilon) for epsilon-greedy policy.
-            gamma (float): Discount factor for future rewards.
-            episode (int): Number of episodes for training.
-        """
-        self.env=env
-        self.model=model
-        self.lr=learn_rate
-        self.epsilon=epsilon
-        self.epsilon_decay=epsilon_decay
-        self.min_epsilon=min_epsilon
-        self.gamma=gamma
-        self.episodes = episodes
+import torch
+import gymnasium as gym
+import numpy as np
+import torch.nn as nn
+from torch.optim import Adam
+from collections import deque
+import random as rand
+from numpy import random
 
-    def choose_action(self,state):
-        """Choose an action based on epsilon-greedy policy.
-        Args:
-            state (int): Current state of the environment.
-        Returns:
-            int: Chosen action.
-        """
+# Include the ReplayMemory class from above or define it here
+class ReplayMemory(object):
+    def __init__(self, capacity):
+        self.memory = deque(maxlen=capacity)
+
+    def push(self, state, action, reward, next_state, done):
+        """Saves a transition."""
+        self.memory.append((state, action, reward, next_state, done))
+
+    def sample(self, batch_size):
+        """Samples a batch of transitions."""
+        return rand.sample(self.memory, batch_size)
+
+    def __len__(self):
+        return len(self.memory)
+
+class carpole_env(gym.Env):
+    def __init__(self, env, model, learn_rate:float, epsilon:float, epsilon_decay, min_epsilon, gamma:float, episodes:int=1000):
+        # Initialization as in your prompt
+        self.env = env
+        self.model = model
+        self.lr = learn_rate
+        self.epsilon = epsilon
+        self.epsilon_decay = epsilon_decay
+        self.min_epsilon = min_epsilon
+        self.gamma = gamma
+        self.episodes = episodes
+        # Added attributes for training
+        self.memory_capacity = 10000 
+        self.batch_size = 64
+        self.target_update_freq = 10 # C steps
+
+    def choose_action(self, state):
+        # choose_action method as in your prompt
         if random.uniform(0, 1) < self.epsilon:
             action = self.env.action_space.sample()  # Explore: random action
         else:
-            state_tensor = torch.FloatTensor(state).unsqueeze(0)  # Convert state to tensor
-            q_values = self.model(state_tensor)
+            state_tensor = torch.FloatTensor(state).unsqueeze(0)
+            with torch.no_grad(): # Disable gradient calculations for inference
+                q_values = self.model(state_tensor)
             action = torch.argmax(q_values).item()  # Exploit: best action from Q-network
         return action
     
-    def update_q_value(self,state,action,reward,next_state,terminal,optimizer,loss_fn):
-        """Update the Q-value for a given state-action pair.
-        Args:
-            state (int): Current state.
-            action (int): Action taken.
-            reward (float): Reward received.
-            next_state (int): Next state after taking the action.
+    # Updated update_q_value to use target network for stability
+    def update_q_value(self, target_net, optimizer, loss_fn, transitions):
         """
-        state_tensor = torch.FloatTensor(state).unsqueeze(0)
-        next_state_tensor = torch.FloatTensor(next_state).unsqueeze(0)
+        Updates the Q-network using a minibatch of transitions.
+        """
+        # Unpack the batch of transitions
+        states, actions, rewards, next_states, terminals = zip(*transitions)
 
-        q_values = self.model(state_tensor)
-        next_q_values = self.model(next_state_tensor)
+        # Convert to PyTorch Tensors
+        states = torch.FloatTensor(np.array(states))
+        actions = torch.LongTensor(actions)
+        rewards = torch.FloatTensor(rewards)
+        next_states = torch.FloatTensor(np.array(next_states))
+        terminals = torch.BoolTensor(terminals)
+        
+        # Compute Q(s_t, a) - the Q-values for the states and actions taken
+        # We only care about the Q-value for the action that was actually taken
+        current_q_values = self.model(states).gather(1, actions.unsqueeze(1)).squeeze(1)
 
-        target = reward if terminal else reward + self.gamma * torch.max(next_q_values).item()
+        # Compute V(s_{t+1}) = max_a' Q'(s_{t+1}, a') for all non-terminal next states
+        # The use of target_net for the next state value is the core of DQN
+        # Target Q-values: Q'(s_{t+1}, a')
+        next_q_values = target_net(next_states).max(1)[0].detach()
 
-        target_f = q_values.clone().detach()
-        target_f[0][action] = target
-
+        # Compute the target Q-value: y_j = r_j + gamma * max_a' Q'(s_{t+1}, a')
+        target_q_values = rewards + (self.gamma * next_q_values * (~terminals))
+        
+        # Perform gradient descent step on (y_j - Q(s_j, a_j))^2
         optimizer.zero_grad()
-        loss = loss_fn(q_values, target_f)
+        loss = loss_fn(current_q_values, target_q_values)
         loss.backward()
+        
+        # Optional: Clip gradients
+        # for param in self.model.parameters():
+        #     param.grad.data.clamp_(-1, 1)
+            
         optimizer.step()
+        return loss.item()
+
+    def train(self):
+        """
+        Main training loop for the DQN agent.
+        """
+        # 1. Initialize replay memory D
+        memory = ReplayMemory(self.memory_capacity)
+        
+        # 2. Initialize action-value network Q (self.model)
+        # 2. Initialize target network Q' (target_net) with the same weights
+        target_net = type(self.model)(
+            self.env.observation_space.shape[0], 
+            self.env.action_space.n
+        ).eval() # Set target network to evaluation mode
+        target_net.load_state_dict(self.model.state_dict()) 
+
+        # Setup optimizer and loss function
+        optimizer = Adam(self.model.parameters(), lr=self.lr)
+        loss_fn = nn.MSELoss()
+        
+        # Tracking variables
+        episode_rewards = []
+        steps_done = 0
+
+        # 3. Loop for episode 1 to M do
+        for episode in range(self.episodes):
+            state, _ = self.env.reset()
+            done = False
+            total_reward = 0
+
+            # Loop for t from 1 to T do
+            while not done:
+                # 4. Select action a_t with epsilon-greedy policy
+                action = self.choose_action(state)
+
+                # 5. Execute action a_t, observe reward r_t, state s_{t+1}, and termination d_t
+                next_state, reward, terminated, truncated, _ = self.env.step(action)
+                done = terminated or truncated
+
+                # Scale reward if needed (e.g., CartPole gives +1 every step)
+                total_reward += reward
+
+                # 6. Store transition in D
+                memory.push(state, action, reward, next_state, done)
+
+                # 7. Update current state
+                state = next_state
+                steps_done += 1
+
+                # 8. Sample minibatch of transitions from D
+                if len(memory) > self.batch_size:
+                    transitions = memory.sample(self.batch_size)
+                    
+                    # 9. Compute target y_j and perform gradient descent step
+                    self.update_q_value(target_net, optimizer, loss_fn, transitions)
+
+                # 10. Update target network every C steps
+                if steps_done % self.target_update_freq == 0:
+                    target_net.load_state_dict(self.model.state_dict())
+
+            episode_rewards.append(total_reward)
+
+            # Epsilon decay
+            self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
+            
+            # Print progress
+            if (episode + 1) % 100 == 0:
+                print(f"Episode {episode+1}/{self.episodes} | Avg Reward: {np.mean(episode_rewards[-100:]):.2f} | Epsilon: {self.epsilon:.4f}")
+
+        return episode_rewards
+
+# Hyperparameters
+LEARN_RATE = 1e-3
+GAMMA = 0.99
+EPSILON = 1.0
+MIN_EPSILON = 0.01
+EPSILON_DECAY = 1
+EPISODES = 2000
+
+# Environment setup (CartPole has continuous observation space, discrete action space)
+env_name = 'CartPole-v1'
+env = gym.make(env_name,render_mode='human')
+state_size = env.observation_space.shape[0] # 4 for CartPole: position, velocity, angle, angular velocity
+action_size = env.action_space.n           # 2 for CartPole: push left or right
+
+# Model instantiation
+q_net = q_model3(state_size, action_size) # Or q_model5
+
+# Agent instantiation and training
+agent = carpole_env(
+    env=env,
+    model=q_net,
+    learn_rate=LEARN_RATE,
+    epsilon=EPSILON,
+    epsilon_decay=EPSILON_DECAY,
+    min_epsilon=MIN_EPSILON,
+    gamma=GAMMA,
+    episodes=EPISODES
+)
+
+rewards = agent.train() 
