@@ -7,7 +7,7 @@ from numpy import random
 
 
 class frozenlake_agent(gym.Env):
-    def __init__(self,env,learn_rate:float,epsilon:float,epsilon_decay,min_epsilon,gamma:float,episodes:int=1000):
+    def __init__(self,env,learn_rate:float,epsilon:float,epsilon_decay,min_epsilon,gamma:float,episodes:int=1000,q_table=None):
         """Initialize the Q-learning agent for FrozenLake environment.
         Args:
             env (gym.Env): The FrozenLake environment.
@@ -22,7 +22,13 @@ class frozenlake_agent(gym.Env):
         self.epsilon_decay=epsilon_decay
         self.min_epsilon=min_epsilon
         self.gamma=gamma
-        self.q_table=np.zeros((self.env.observation_space.n,self.env.action_space.n)) #(16,4)
+        
+        if q_table is None:
+            self.q_table=np.zeros((self.env.observation_space.n,self.env.action_space.n)) #(16,4)
+            
+        else:
+            self.q_table = q_table
+
         self.learning_error = []
         self.episodes = episodes
         
@@ -89,7 +95,6 @@ def evaluate(env,agent, episodes=10):
         truncated = False
         total = 0
         step = 0
-
 
         
         while not (done or truncated):
