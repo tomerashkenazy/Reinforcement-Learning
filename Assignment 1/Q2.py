@@ -62,7 +62,7 @@ class ReplayMemory(object):
         return len(self.memory)
 
 class carpole_env(gym.Env):
-    def __init__(self, env, model, learn_rate:float, epsilon:float, epsilon_decay, min_epsilon, gamma:float, episodes:int=1000):
+    def __init__(self, env, model, learn_rate:float, epsilon:float, epsilon_decay, min_epsilon, gamma:float,memory_capacity = 10000,batch_size=64,target_update_freq=10,episodes:int=1000):
         # Initialization as in your prompt
         self.env = env
         self.model = model
@@ -73,10 +73,11 @@ class carpole_env(gym.Env):
         self.gamma = gamma
         self.episodes = episodes
         # Added attributes for training
-        self.memory_capacity = 10000 
-        self.batch_size = 64
-        self.target_update_freq = 10 # C steps
-
+        self.memory_capacity = memory_capacity 
+        self.batch_size = batch_size
+        self.target_update_freq = target_update_freq
+        self.loss_tracking = [] #Track loss over training steps
+        self.episode_rewards = [] # Track rewards over episodes
     def choose_action(self, state):
         # choose_action method as in your prompt
         if random.uniform(0, 1) < self.epsilon:
@@ -118,6 +119,7 @@ class carpole_env(gym.Env):
         # Perform gradient descent step on (y_j - Q(s_j, a_j))^2
         optimizer.zero_grad()
         loss = loss_fn(current_q_values, target_q_values)
+        self.loss_tracking.append(loss.item())
         loss.backward()
         
         # Optional: Clip gradients
@@ -131,6 +133,7 @@ class carpole_env(gym.Env):
         """
         Main training loop for the DQN agent.
         """
+        print("Starting training...")
         # 1. Initialize replay memory D
         memory = ReplayMemory(self.memory_capacity)
         
@@ -146,15 +149,14 @@ class carpole_env(gym.Env):
         optimizer = Adam(self.model.parameters(), lr=self.lr)
         loss_fn = nn.MSELoss()
         
-        # Tracking variables
-        episode_rewards = []
-        steps_done = 0
+        
 
         # 3. Loop for episode 1 to M do
         for episode in range(self.episodes):
             state, _ = self.env.reset()
             done = False
             total_reward = 0
+            steps_done = 0
 
             # Loop for t from 1 to T do
             while not done:
@@ -165,15 +167,14 @@ class carpole_env(gym.Env):
                 next_state, reward, terminated, truncated, _ = self.env.step(action)
                 done = terminated or truncated
 
-                # Scale reward if needed (e.g., CartPole gives +1 every step)
-                total_reward += reward
-
                 # 6. Store transition in D
                 memory.push(state, action, reward, next_state, done)
 
                 # 7. Update current state
                 state = next_state
+                total_reward += reward
                 steps_done += 1
+
 
                 # 8. Sample minibatch of transitions from D
                 if len(memory) > self.batch_size:
@@ -186,16 +187,23 @@ class carpole_env(gym.Env):
                 if steps_done % self.target_update_freq == 0:
                     target_net.load_state_dict(self.model.state_dict())
 
-            episode_rewards.append(total_reward)
+            self.episode_rewards.append(total_reward)  # Average reward per step
+
+            
+            if np.mean(self.episode_rewards[-100:]) >= 475:  # Solved condition for CartPole-v1
+                print(f"\nSolved in episode {episode}!\n")
+                self.episode_rewards.append(total_reward)
+                print(f"Episode {episode+1}/{self.episodes} | Avg Reward: {total_reward/steps_done:.2f} | avg Loss: {np.mean(self.loss_tracking[-100:]):.4f}\n")
+                print("Training complete.\n")
+
+            if (episode + 1) % 100 == 0:
+                print(f"Episode {episode+1}/{self.episodes} | Last 100 Avg Reward: {np.mean(self.episode_rewards[-100:]):.2f} | Last 100 avg Loss: {np.mean(self.loss_tracking[-100:]):.4f}")
+            
 
             # Epsilon decay
             self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
-            
-            # Print progress
-            if (episode + 1) % 100 == 0:
-                print(f"Episode {episode+1}/{self.episodes} | Avg Reward: {np.mean(episode_rewards[-100:]):.2f} | Epsilon: {self.epsilon:.4f}")
 
-        return episode_rewards
+        return self.episode_rewards
 
 # Hyperparameters
 LEARN_RATE = 1e-3
