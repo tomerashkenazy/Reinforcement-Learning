@@ -202,7 +202,7 @@ LEARN_RATE = 1e-3
 GAMMA = 0.99
 EPSILON = 1.0
 MIN_EPSILON = 0.01
-EPSILON_DECAY = 1
+EPSILON_DECAY = 0.995
 EPISODES = 2000
 
 # Environment setup (CartPole has continuous observation space, discrete action space)
@@ -212,7 +212,7 @@ state_size = env.observation_space.shape[0] # 4 for CartPole: position, velocity
 action_size = env.action_space.n           # 2 for CartPole: push left or right
 
 # Model instantiation
-q_net = q_model3(state_size, action_size) # Or q_model5
+q_net = q_model5(state_size, action_size) # Or q_model5
 
 # Agent instantiation and training
 agent = carpole_env(

@@ -7,7 +7,7 @@ from numpy import random
 
 
 class frozenlake_agent(gym.Env):
-    def __init__(self,env,learn_rate:float,epsilon:float,epsilon_decay,min_epsilon,gamma:float,episodes:int=1000):
+    def __init__(self,env,learn_rate:float=None,epsilon:float=None,epsilon_decay=None,min_epsilon=None,gamma:float=None,episodes:int=1000,params=None):
         """Initialize the Q-learning agent for FrozenLake environment.
         Args:
             env (gym.Env): The FrozenLake environment.
@@ -17,14 +17,24 @@ class frozenlake_agent(gym.Env):
             episode (int): Number of episodes for training.
         """
         self.env=env
-        self.lr=learn_rate
-        self.epsilon=epsilon
-        self.epsilon_decay=epsilon_decay
-        self.min_epsilon=min_epsilon
-        self.gamma=gamma
         self.q_table=np.zeros((self.env.observation_space.n,self.env.action_space.n)) #(16,4)
         self.learning_error = []
-        self.episodes = episodes
+
+        if params is None:
+            self.episodes = episodes
+            self.lr=learn_rate
+            self.epsilon=epsilon
+            self.epsilon_decay=epsilon_decay
+            self.min_epsilon=min_epsilon
+            self.gamma=gamma
+
+        else:
+            self.episodes = params['episodes']
+            self.lr=params['learn_rate']
+            self.epsilon=params['epsilon']
+            self.epsilon_decay=params['epsilon_decay']
+            self.min_epsilon=params['min_epsilon']
+            self.gamma=params['gamma']
         
 
     def choose_action(self,state):
@@ -64,8 +74,9 @@ class frozenlake_agent(gym.Env):
             done = False
             truncated = False
             total_reward = 0
+            step = 0
 
-            while not (done or truncated):
+            while not (done or truncated) or step < 100:
                 action = self.choose_action(state)
                 next_state, reward, done, truncated, info = self.env.step(action)
                 terminal = done or truncated
@@ -74,6 +85,7 @@ class frozenlake_agent(gym.Env):
 
                 state = next_state
                 total_reward += reward
+                step += 1
 
             self.learning_error.append(total_reward)
             self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)  # Decay epsilon
