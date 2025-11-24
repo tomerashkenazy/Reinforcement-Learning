@@ -7,37 +7,39 @@ from torch.optim import Adam
 from collections import deque
 import random as rand
 from numpy import random
-from Q1 import frozenlake_agent
 
-class q_model3(nn.Module):
+class DuelingQNetwork(nn.Module):
     def __init__(self, state_size, action_size):
-        super(q_model3, self).__init__()
-        self.fc1 = nn.Linear(state_size, 8)
-        self.fc2 = nn.Linear(8, 16)
-        self.fc3 = nn.Linear(16, action_size)
+        super(DuelingQNetwork, self).__init__()
+        self.fc1 = nn.Linear(state_size, 128)
+        self.fc2 = nn.Linear(128, 128)
+        self.fc3 = nn.Linear(128, 96)  # Shared layer
 
-    def forward(self, x):
-        x = torch.relu(self.fc1(x))
-        x = torch.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
+        # Separate streams for Advantage and Value
+        self.advantage = nn.Sequential(
+            nn.Linear(96, 64),
+            nn.ReLU(),
+            nn.Linear(64, action_size)
+        )
 
-class q_model5(nn.Module):
-    def __init__(self, state_size, action_size):
-        super(q_model5, self).__init__()
-        self.fc1 = nn.Linear(state_size, 8)
-        self.fc2 = nn.Linear(8, 8)
-        self.fc3 = nn.Linear(8, 16)
-        self.fc4 = nn.Linear(16, 8)
-        self.fc5 = nn.Linear(8, action_size)
+        self.value = nn.Sequential(
+            nn.Linear(96, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1)
+        )
 
     def forward(self, x):
         x = torch.relu(self.fc1(x))
         x = torch.relu(self.fc2(x))
         x = torch.relu(self.fc3(x))
-        x = torch.relu(self.fc4(x))
-        x = self.fc5(x)
-        return x
+
+        # Compute Advantage and Value streams
+        advantage = self.advantage(x)
+        value = self.value(x)
+
+        # Combine Advantage and Value to get Q-values
+        q_values = value + (advantage - advantage.mean(dim=1, keepdim=True))
+        return q_values
     
 
 # Include the ReplayMemory class from above or define it here
@@ -215,7 +217,7 @@ state_size = env.observation_space.shape[0] # 4 for CartPole: position, velocity
 action_size = env.action_space.n           # 2 for CartPole: push left or right
 
 # Model instantiation
-q_net = q_model5(state_size, action_size) # Or q_model5
+q_net = DuelingQNetwork(state_size, action_size) # Or q_model5
 
 # Agent instantiation and training
 agent = carpole_env(
@@ -229,4 +231,4 @@ agent = carpole_env(
     episodes=EPISODES
 )
 
-rewards = agent.train() 
+rewards = agent.train()
