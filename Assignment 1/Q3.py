@@ -7,6 +7,8 @@ from torch.optim import Adam
 from collections import deque
 import random as rand
 from numpy import random
+import csv
+import os
 
 class DuelingQNetwork(nn.Module):
     def __init__(self, state_size, action_size):
@@ -131,76 +133,94 @@ class carpole_env(gym.Env):
         Main training loop for the DQN agent.
         """
         print("Starting training...")
-        # 1. Initialize replay memory D
-        memory = ReplayMemory(self.memory_capacity)
-        
-        # 2. Initialize action-value network Q (self.model)
-        # 2. Initialize target network Q' (target_net) with the same weights
-        target_net = type(self.model)(
-            self.env.observation_space.shape[0], 
-            self.env.action_space.n
-        ).eval() # Set target network to evaluation mode
-        target_net.load_state_dict(self.model.state_dict()) 
 
-        # Setup optimizer and loss function
-        optimizer = Adam(self.model.parameters(), lr=self.lr)
-        loss_fn = nn.MSELoss()
-        
-        
+        # Get a unique filename for the training log
+        log_filename = get_unique_filename()
 
-        # 3. Loop for episode 1 to M do
-        for episode in range(self.episodes):
-            state, _ = self.env.reset()
-            done = False
-            total_reward = 0
-            steps_done = 0
+        # Initialize CSV file
+        with open(log_filename, mode="w", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(["Episode", "Reward", "Loss", "Epsilon"])
 
-            # Loop for t from 1 to T do
-            while not done:
-                # 4. Select action a_t with epsilon-greedy policy
-                action = self.choose_action(state)
+            # 1. Initialize replay memory D
+            memory = ReplayMemory(self.memory_capacity)
 
-                # 5. Execute action a_t, observe reward r_t, state s_{t+1}, and termination d_t
-                next_state, reward, terminated, truncated, _ = self.env.step(action)
-                done = terminated or truncated
+            # 2. Initialize action-value network Q (self.model)
+            # 2. Initialize target network Q' (target_net) with the same weights
+            target_net = type(self.model)(
+                self.env.observation_space.shape[0], 
+                self.env.action_space.n
+            ).eval() # Set target network to evaluation mode
+            target_net.load_state_dict(self.model.state_dict())
 
-                # 6. Store transition in D
-                memory.push(state, action, reward, next_state, done)
+            # Setup optimizer and loss function
+            optimizer = Adam(self.model.parameters(), lr=self.lr)
+            loss_fn = nn.MSELoss()
 
-                # 7. Update current state
-                state = next_state
-                total_reward += reward
-                steps_done += 1
+            # 3. Loop for episode 1 to M do
+            for episode in range(self.episodes):
+                state, _ = self.env.reset()
+                done = False
+                total_reward = 0
+                steps_done = 0
 
+                # Loop for t from 1 to T do
+                while not done:
+                    # 4. Select action a_t with epsilon-greedy policy
+                    action = self.choose_action(state)
 
-                # 8. Sample minibatch of transitions from D
-                if len(memory) > self.batch_size:
-                    transitions = memory.sample(self.batch_size)
-                    
-                    # 9. Compute target y_j and perform gradient descent step
-                    self.update_q_value(target_net, optimizer, loss_fn, transitions)
+                    # 5. Execute action a_t, observe reward r_t, state s_{t+1}, and termination d_t
+                    next_state, reward, terminated, truncated, _ = self.env.step(action)
+                    done = terminated or truncated
 
-                # 10. Update target network every C steps
-                if steps_done % self.target_update_freq == 0:
-                    target_net.load_state_dict(self.model.state_dict())
+                    # 6. Store transition in D
+                    memory.push(state, action, reward, next_state, done)
 
-            self.episode_rewards.append(total_reward)  # Average reward per step
+                    # 7. Update current state
+                    state = next_state
+                    total_reward += reward
+                    steps_done += 1
 
-            
-            if np.mean(self.episode_rewards[-100:]) >= 475:  # Solved condition for CartPole-v1
-                print(f"\nSolved in episode {episode}!\n")
-                self.episode_rewards.append(total_reward)
-                print(f"Episode {episode+1}/{self.episodes} | Avg Reward: {total_reward/steps_done:.2f} | avg Loss: {np.mean(self.loss_tracking[-100:]):.4f}\n")
-                print("Training complete.\n")
+                    # 8. Sample minibatch of transitions from D
+                    if len(memory) > self.batch_size:
+                        transitions = memory.sample(self.batch_size)
 
-            if (episode + 1) % 100 == 0:
-                print(f"Episode {episode+1}/{self.episodes} | Last 100 Avg Reward: {np.mean(self.episode_rewards[-100:]):.2f} | Last 100 avg Loss: {np.mean(self.loss_tracking[-100:]):.4f}")
-            
+                        # 9. Compute target y_j and perform gradient descent step
+                        loss = self.update_q_value(target_net, optimizer, loss_fn, transitions)
 
-            # Epsilon decay
-            self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
+                    # 10. Update target network every C steps
+                    if steps_done % self.target_update_freq == 0:
+                        target_net.load_state_dict(self.model.state_dict())
 
-        return self.episode_rewards
+                self.episode_rewards.append(total_reward)  # Average reward per step
+
+                # Log training data to CSV
+                avg_loss = np.mean(self.loss_tracking[-100:]) if self.loss_tracking else 0
+                writer.writerow([episode + 1, total_reward, avg_loss, self.epsilon])
+
+                if np.mean(self.episode_rewards[-100:]) >= 475:  # Solved condition for CartPole-v1
+                    print(f"\nSolved in episode {episode}!")
+                    print("Training complete.\n")
+                    break
+
+                if (episode + 1) % 100 == 0:
+                    print(f"Episode {episode+1}/{self.episodes} | Last 100 Avg Reward: {np.mean(self.episode_rewards[-100:]):.2f} | Last 100 avg Loss: {avg_loss:.4f}")
+
+                # Epsilon decay
+                self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
+
+            return self.episode_rewards
+
+def get_unique_filename(base_name="training_log", extension="csv"):
+    """
+    Generate a unique filename by appending a number if the file already exists.
+    """
+    counter = 0
+    while True:
+        filename = f"{base_name}{counter if counter > 0 else ''}.{extension}"
+        if not os.path.exists(filename):
+            return filename
+        counter += 1
 
 # Hyperparameters
 LEARN_RATE = 1e-3
