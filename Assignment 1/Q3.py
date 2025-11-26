@@ -3,31 +3,41 @@ import gymnasium as gym
 from gymnasium.envs.toy_text.frozen_lake import generate_random_map
 import numpy as np
 import torch.nn as nn
-from torch.optim import Adam
-from collections import deque
+from Q1 import frozenlake_agent
 import random as rand
-from numpy import random
-import csv
+from collections import deque
+from torch.optim import Adam
+import matplotlib.pyplot as plt
+from pathlib import Path
+import pandas as pd
 import os
 
+
 class DuelingQNetwork(nn.Module):
-    def __init__(self, state_size, action_size):
+    def __init__(self, state_size, action_size, fc1_size, fc2_size, fc3_size, fc_adv_size, fc_val_size):
         super(DuelingQNetwork, self).__init__()
-        self.fc1 = nn.Linear(state_size, 128)
-        self.fc2 = nn.Linear(128, 128)
-        self.fc3 = nn.Linear(128, 96)  # Shared layer
+        # Save the provided layer sizes so external code (e.g. agents) can access them
+        self.fc1_size = fc1_size
+        self.fc2_size = fc2_size
+        self.fc3_size = fc3_size
+        self.fc_adv_size = fc_adv_size
+        self.fc_val_size = fc_val_size
+
+        self.fc1 = nn.Linear(state_size, fc1_size)
+        self.fc2 = nn.Linear(fc1_size, fc2_size)
+        self.fc3 = nn.Linear(fc2_size, fc3_size)  # Shared layer
 
         # Separate streams for Advantage and Value
         self.advantage = nn.Sequential(
-            nn.Linear(96, 64),
+            nn.Linear(fc3_size, fc_adv_size),
             nn.ReLU(),
-            nn.Linear(64, action_size)
+            nn.Linear(fc_adv_size, action_size)
         )
 
         self.value = nn.Sequential(
-            nn.Linear(96, 64),
+            nn.Linear(fc3_size, fc_val_size),
             nn.ReLU(),
-            nn.Linear(64, 1)
+            nn.Linear(fc_val_size, 1)
         )
 
     def forward(self, x):
@@ -60,26 +70,43 @@ class ReplayMemory(object):
     def __len__(self):
         return len(self.memory)
 
-class carpole_env(gym.Env):
-    def __init__(self, env, model, learn_rate:float, epsilon:float, epsilon_decay, min_epsilon, gamma:float,memory_capacity = 10000,batch_size=64,target_update_freq=10,episodes:int=1000):
+class cartpole_agent(gym.Env):
+    def __init__(self, env, model, learn_rate:float=None, epsilon:float=None, epsilon_decay=None, min_epsilon=None, gamma:float=None,memory_capacity = 10000,batch_size=64,target_update_freq=10,episodes:int=1000,params=None):
         # Initialization as in your prompt
+        if params is None:
+            self.lr = learn_rate
+            self.epsilon = epsilon
+            self.epsilon_decay = epsilon_decay
+            self.min_epsilon = min_epsilon
+            self.gamma = gamma
+            self.episodes = episodes
+            # Added attributes for training
+            self.memory_capacity = memory_capacity 
+            self.batch_size = batch_size
+            self.target_update_freq = target_update_freq
+        else:
+            self.lr = params['learn_rate']
+            self.epsilon = params['epsilon']
+            self.epsilon_decay = params['epsilon_decay']
+            self.min_epsilon = params['min_epsilon']
+            self.gamma = params['gamma']
+            self.episodes = params['episodes']
+            # Added attributes for training
+            self.memory_capacity = params['memory_capacity'] 
+            self.batch_size = params['batch_size']
+            self.target_update_freq = params['target_update_freq']
+
         self.env = env
         self.model = model
-        self.lr = learn_rate
-        self.epsilon = epsilon
-        self.epsilon_decay = epsilon_decay
-        self.min_epsilon = min_epsilon
-        self.gamma = gamma
-        self.episodes = episodes
-        # Added attributes for training
-        self.memory_capacity = memory_capacity 
-        self.batch_size = batch_size
-        self.target_update_freq = target_update_freq
+        self.model_name="dualing_model"
+        self.file_name = 'plot_Q3_dualing_model'
         self.loss_tracking = [] #Track loss over training steps
         self.episode_rewards = [] # Track rewards over episodes
+        self.training_log = []
+
     def choose_action(self, state):
         # choose_action method as in your prompt
-        if random.uniform(0, 1) < self.epsilon:
+        if rand.random() < self.epsilon:
             action = self.env.action_space.sample()  # Explore: random action
         else:
             state_tensor = torch.FloatTensor(state).unsqueeze(0)
@@ -133,122 +160,197 @@ class carpole_env(gym.Env):
         Main training loop for the DQN agent.
         """
         print("Starting training...")
+        # 1. Initialize replay memory D
+        memory = ReplayMemory(self.memory_capacity)
+        
+        # 2. Initialize action-value network Q (self.model)
+        # 2. Initialize target network Q' (target_net) with the same weights
+        target_net = type(self.model)(
+            self.env.observation_space.shape[0], 
+            self.env.action_space.n,
+            self.model.fc1_size,
+            self.model.fc2_size,
+            self.model.fc3_size,
+            self.model.fc_adv_size,
+            self.model.fc_val_size
+        ).eval() # Set target network to evaluation mode
 
-        # Get a unique filename for the training log
-        log_filename = get_unique_filename()
+        target_net.load_state_dict(self.model.state_dict()) 
 
-        # Initialize CSV file
-        with open(log_filename, mode="w", newline="") as file:
-            writer = csv.writer(file)
-            writer.writerow(["Episode", "Reward", "Loss", "Epsilon"])
+        # Setup optimizer and loss function
+        optimizer = Adam(self.model.parameters(), lr=self.lr)
+        loss_fn = nn.MSELoss()
+        steps_done = 0
+        
 
-            # 1. Initialize replay memory D
-            memory = ReplayMemory(self.memory_capacity)
+        # 3. Loop for episode 1 to M do
+        for episode in range(self.episodes):
+            state, _ = self.env.reset()
+            done = False
+            total_reward = 0
+            
 
-            # 2. Initialize action-value network Q (self.model)
-            # 2. Initialize target network Q' (target_net) with the same weights
-            target_net = type(self.model)(
-                self.env.observation_space.shape[0], 
-                self.env.action_space.n
-            ).eval() # Set target network to evaluation mode
-            target_net.load_state_dict(self.model.state_dict())
+            # Loop for t from 1 to T do
+            while not done:
+                # 4. Select action a_t with epsilon-greedy policy
+                action = self.choose_action(state)
 
-            # Setup optimizer and loss function
-            optimizer = Adam(self.model.parameters(), lr=self.lr)
-            loss_fn = nn.MSELoss()
+                # 5. Execute action a_t, observe reward r_t, state s_{t+1}, and termination d_t
+                next_state, reward, terminated, truncated, _ = self.env.step(action)
+                done = terminated or truncated
 
-            # 3. Loop for episode 1 to M do
-            for episode in range(self.episodes):
-                state, _ = self.env.reset()
-                done = False
-                total_reward = 0
-                steps_done = 0
+                # 6. Store transition in D
+                memory.push(state, action, reward, next_state, done)
 
-                # Loop for t from 1 to T do
-                while not done:
-                    # 4. Select action a_t with epsilon-greedy policy
-                    action = self.choose_action(state)
+                # 7. Update current state
+                state = next_state
+                total_reward += reward
+                steps_done += 1
 
-                    # 5. Execute action a_t, observe reward r_t, state s_{t+1}, and termination d_t
-                    next_state, reward, terminated, truncated, _ = self.env.step(action)
-                    done = terminated or truncated
 
-                    # 6. Store transition in D
-                    memory.push(state, action, reward, next_state, done)
+                # 8. Sample minibatch of transitions from D
+                if len(memory) > self.batch_size:
+                    transitions = memory.sample(self.batch_size)
+                    
+                    # 9. Compute target y_j and perform gradient descent step
+                    self.update_q_value(target_net, optimizer, loss_fn, transitions)
 
-                    # 7. Update current state
-                    state = next_state
-                    total_reward += reward
-                    steps_done += 1
+                # 10. Update target network every C steps
+                if steps_done % self.target_update_freq == 0:
+                    target_net.load_state_dict(self.model.state_dict())
 
-                    # 8. Sample minibatch of transitions from D
-                    if len(memory) > self.batch_size:
-                        transitions = memory.sample(self.batch_size)
+            self.episode_rewards.append(total_reward)  # Total reward per epeisode
 
-                        # 9. Compute target y_j and perform gradient descent step
-                        loss = self.update_q_value(target_net, optimizer, loss_fn, transitions)
+            
 
-                    # 10. Update target network every C steps
-                    if steps_done % self.target_update_freq == 0:
-                        target_net.load_state_dict(self.model.state_dict())
+            if (episode + 1) % 100 == 0:
+                print(f"Episode {episode+1}/{self.episodes} | Last 100 Avg Reward: {np.mean(self.episode_rewards[-100:]):.2f} | Last 100 avg Loss: {np.mean(self.loss_tracking[-100:]):.4f}")
+                self.training_log.append({
+                            "episode": episode + 1,
+                            "avg_reward_last100": float(np.mean(self.episode_rewards[-100:])),
+                            "avg_loss_last100": float(np.mean(self.loss_tracking[-100:])),
+                            "solved (>=475)": np.mean(self.episode_rewards[-100:]) >= 475
+                        })
+                
+                self.df = pd.DataFrame(self.training_log)
 
-                self.episode_rewards.append(total_reward)  # Average reward per step
+                if np.mean(self.episode_rewards[-100:]) >= 475:
+                    self.filename = get_unique_filename(base_name=f"{self.model_name}_training_log", extension="csv", output_path='.')
+                    # Save Dataframe of training log
+                    self.df.to_csv(self.filename, index=False)
 
-                # Log training data to CSV
-                avg_loss = np.mean(self.loss_tracking[-100:]) if self.loss_tracking else 0
-                writer.writerow([episode + 1, total_reward, avg_loss, self.epsilon])
+            # Epsilon decay
+            self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
 
-                if np.mean(self.episode_rewards[-100:]) >= 475:  # Solved condition for CartPole-v1
-                    print(f"\nSolved in episode {episode}!")
-                    print("Training complete.\n")
-                    break
+        return self.episode_rewards
+    
+    def plot_results(self, save_dir="plots_Q3", model_name="dualing_model"):
+        #filename = get_unique_filename(base_name=f"{model_name}_training_log", extension="csv", output_path=save_dir)
+        # Save Dataframe of training log
+        self.df.to_csv(self.filename, index=False)
+        # Create the folder if it doesn't exist
+        save_dir = Path(save_dir)
+        save_dir.mkdir(parents=True, exist_ok=True)
 
-                if (episode + 1) % 100 == 0:
-                    print(f"Episode {episode+1}/{self.episodes} | Last 100 Avg Reward: {np.mean(self.episode_rewards[-100:]):.2f} | Last 100 avg Loss: {avg_loss:.4f}")
 
-                # Epsilon decay
-                self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
+        if len(self.loss_tracking) > 0:
+            x_100 = np.arange(1,len(self.loss_tracking) + 1)
 
-            return self.episode_rewards
+            plt.figure()
+            plt.plot(x_100,self.loss_tracking)
+            plt.xlabel("Training Steps")
+            plt.ylabel("Loss")
+            plt.title("Learning curve: loss over training steps")
+            plt.grid(True)
 
-def get_unique_filename(base_name="training_log", extension="csv"):
+            plt.savefig(save_dir / "loss_over_training_steps.png", dpi=300, bbox_inches='tight')
+            plt.show()
+
+        assert len(self.episode_rewards) == self.episodes, "Episode rewards length mismatch."
+        
+        if len(self.episode_rewards) > 0:
+            episodes = np.arange(1, len(self.episode_rewards) + 1)
+
+            plt.figure()
+            plt.scatter(episodes, self.episode_rewards)
+            plt.xlabel("Episode")
+            plt.ylabel("Reward")
+            plt.title(f"Reward per Episode [{model_name}]")
+            plt.grid(True)
+
+            plt.savefig(save_dir / "episode_rewards.png", dpi=300, bbox_inches='tight')
+            plt.show()
+
+def evaluate_cartpole_agent_Q3(env, agent, eval_episodes=10):
+    total_rewards = []
+    for episode in range(eval_episodes):
+        state, _ = env.reset()
+        done = False
+        total_reward = 0
+        agent.epsilon = 0.0  # Disable exploration for evaluation
+        while not done:
+            action = agent.choose_action(state)
+            next_state, reward, terminated, truncated, _ = env.step(action)
+            done = terminated or truncated
+            state = next_state
+            total_reward += reward
+        total_rewards.append(total_reward)
+    mean_reward = np.mean(total_rewards)
+    return mean_reward
+
+    
+def get_unique_filename(base_name="training_log", extension="csv", output_path="."):
     """
     Generate a unique filename by appending a number if the file already exists.
     """
     counter = 0
     while True:
-        filename = f"{base_name}{counter if counter > 0 else ''}.{extension}"
+        filename = os.path.join(output_path, f"{base_name}{counter if counter > 0 else ''}.{extension}")
         if not os.path.exists(filename):
             return filename
         counter += 1
+        
+        
+if __name__ == "__main__":
+    # Hyperparameters
+    learn_rate = 0.0001
+    gamma = 0.99
+    epsilon = 1
+    min_epsilon = 0.1
+    epsilon_decay = 0.99
+    episodes = 2000
+    memory_capacity = 50000
+    batch_size = 128
+    target_update_freq = 50
+    fc1_size = 64
+    fc2_size = 64
+    fc3_size = 64
+    fc_adv_size = 32
+    fc_val_size = 32
 
-# Hyperparameters
-LEARN_RATE = 1e-3
-GAMMA = 0.99
-EPSILON = 1.0
-MIN_EPSILON = 0.01
-EPSILON_DECAY = 0.995
-EPISODES = 2000
+    # Environment setup (CartPole has continuous observation space, discrete action space)
+    env_name = 'CartPole-v1'
+    env = gym.make(env_name)
+    state_size = env.observation_space.shape[0] # 4 for CartPole: position, velocity, angle, angular velocity
+    action_size = env.action_space.n           # 2 for CartPole: push left or right
 
-# Environment setup (CartPole has continuous observation space, discrete action space)
-env_name = 'CartPole-v1'
-env = gym.make(env_name,render_mode='human')
-state_size = env.observation_space.shape[0] # 4 for CartPole: position, velocity, angle, angular velocity
-action_size = env.action_space.n           # 2 for CartPole: push left or right
+    # Model instantiation
+    q_net = DuelingQNetwork(state_size, action_size,fc1_size=fc1_size,fc2_size=fc2_size,fc3_size=fc3_size,fc_adv_size=fc_adv_size,fc_val_size=fc_val_size) 
 
-# Model instantiation
-q_net = DuelingQNetwork(state_size, action_size) # Or q_model5
+    # Agent instantiation and training
+    agent = cartpole_agent(
+        env=env,
+        model=q_net,
+        learn_rate=learn_rate,
+        epsilon=epsilon,
+        epsilon_decay=epsilon_decay,
+        min_epsilon=min_epsilon,
+        gamma=gamma,
+        episodes=episodes,
+        memory_capacity=memory_capacity,
+        batch_size=batch_size,
+        target_update_freq=target_update_freq
+    )
 
-# Agent instantiation and training
-agent = carpole_env(
-    env=env,
-    model=q_net,
-    learn_rate=LEARN_RATE,
-    epsilon=EPSILON,
-    epsilon_decay=EPSILON_DECAY,
-    min_epsilon=MIN_EPSILON,
-    gamma=GAMMA,
-    episodes=EPISODES
-)
-
-rewards = agent.train()
+    rewards = agent.train() 
+    agent.plot_results(save_dir="plots_Q3_dueling_model-1",model_name="dueling_model-1")
