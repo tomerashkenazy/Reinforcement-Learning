@@ -170,6 +170,7 @@ class ActorCriticAgent:
             plt.grid(True)
 
             plt.savefig(save_dir / "episode_rewards.png", dpi=300, bbox_inches='tight')
+            plt.close()
 
 def evaluate_agent(env, agent, eval_episodes=10):
     total_rewards = []
@@ -262,6 +263,7 @@ if __name__ == "__main__":
                 plt.title('Comparison of REINFORCE versions')
                 plt.legend()
                 plt.savefig(comparison_dir / "comparison.png")
+                plt.close()
 
                 # Log results for grid search
                 for agent_name, rewards in zip(
