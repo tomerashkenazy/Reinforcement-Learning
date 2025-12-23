@@ -9,6 +9,10 @@ import pandas as pd
 import os
 from Q1 import ReinforceAgent
 
+# Check for CUDA availability
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
+
 # Policy Network - basic reinforce
 class PolicyNetwork(nn.Module):
     def __init__(self, state_size, action_size, hidden_size=128):
@@ -35,18 +39,18 @@ class ValueNetwork(nn.Module):
     
     
 class ActorCriticAgent:
-    def __init__(self, env, alpha_theta=1e-3,alpha_w=1e-2, gamma=0.99, episodes=1000, early_stop=True):
+    def __init__(self, env, alpha_theta=1e-3, alpha_w=1e-2, gamma=0.99, episodes=1000, early_stop=True):
         self.env = env
         self.gamma = gamma
         self.episodes = episodes
         self.early_stop = early_stop
-        
+
         self.state_size = env.observation_space.shape[0]
         self.action_size = env.action_space.n
 
         # Policy & Value networks
-        self.policy_net = PolicyNetwork(self.state_size, self.action_size)
-        self.value_net  = ValueNetwork(self.state_size)
+        self.policy_net = PolicyNetwork(self.state_size, self.action_size).to(device)
+        self.value_net  = ValueNetwork(self.state_size).to(device)
 
         self.optim_policy = optim.Adam(self.policy_net.parameters(), lr=alpha_theta)
         self.optim_value  = optim.Adam(self.value_net.parameters(), lr=alpha_w)
@@ -55,7 +59,7 @@ class ActorCriticAgent:
 
 
     def select_action(self, state):
-        state_tensor = torch.FloatTensor(state).unsqueeze(0)
+        state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
         probs = self.policy_net(state_tensor)
         dist = torch.distributions.Categorical(probs)
         action = dist.sample()
@@ -73,7 +77,7 @@ class ActorCriticAgent:
             done = False
             total_reward = 0
 
-            I = 1.0   # episodic importance factor from pseudocode
+            I = 1.0   # episodic importance factor
 
             while not done:
 
@@ -86,15 +90,15 @@ class ActorCriticAgent:
                 total_reward += reward
 
                 # Prepare tensors
-                s  = torch.FloatTensor(state)
-                s_next = torch.FloatTensor(next_state)
+                s  = torch.FloatTensor(state).to(device)
+                s_next = torch.FloatTensor(next_state).to(device)
 
                 # Value(s)
                 value_s = self.value_net(s)
 
                 # Value(s')
                 if done:
-                    value_s_next = torch.tensor(0.0)
+                    value_s_next = torch.tensor(0.0).to(device)
                 else:
                     value_s_next = self.value_net(s_next)
 
@@ -166,7 +170,6 @@ class ActorCriticAgent:
             plt.grid(True)
 
             plt.savefig(save_dir / "episode_rewards.png", dpi=300, bbox_inches='tight')
-            plt.show()
 
 def evaluate_agent(env, agent, eval_episodes=10):
     total_rewards = []
@@ -189,68 +192,93 @@ def evaluate_agent(env, agent, eval_episodes=10):
 
 if __name__ == "__main__":
     # Hyperparameters
-    lr = 1e-4
-    lrb = 3e-4
-    gamma = 0.99
-    episodes = 2000
-    early_stop = False
-    expiriment_name = "2000_episodes"
-    base_dir = Path("Assignment2/plots_A2_Q2")
+    learn_rate = [0.01, 0.005, 0.001, 0.0005]
+    learn_rate_b = [0.01, 0.005, 0.001]
+    gamma_values = [0.99, 0.95]
+    episodes = 1500
+    early_stop = True
+    
 
-    # Environment setup
-    env_name = 'CartPole-v1'
-    env = gym.make(env_name)
-    
-    # ----- Actor Critic -----
-    print("=== Training Actor-Critic ===")
-    agent_basic = ActorCriticAgent(
-        env=env,
-        alpha_theta=lr,
-        alpha_w=lrb,
-        gamma=gamma,
-        episodes=episodes,
-        early_stop=early_stop
-    )
-    rewards_actor_critic = agent_basic.train()
-    agent_basic.plot_results(save_dir=base_dir, model_name=f"{expiriment_name}/actor_critic")
-    
-    
-# compare the actor critic with the previous REINFORCE implementations
-# ---  Basic REINFORCE ---
-    print("=== Training Basic REINFORCE ===")
-    agent_basic = ReinforceAgent(
-        env=env,
-        lr=lr,
-        gamma=gamma,
-        episodes=episodes,
-        advantage=False,
-        early_stop=early_stop
-    )
-    rewards_basic = agent_basic.train()
-    
-    # ---  REINFORCE with Baseline (Advantage) ---
-    print("\n=== Training REINFORCE with Baseline ===")
-    agent_baseline = ReinforceAgent(
-        env=env,
-        lr=lr,
-        gamma=gamma,
-        episodes=episodes,
-        advantage=True,
-        early_stop=early_stop
-    )
-    rewards_baseline = agent_baseline.train()
-    
-    comparison_dir = os.path.join(base_dir, expiriment_name)
-    comparison_dir = Path(comparison_dir)
-    comparison_dir.mkdir(parents=True, exist_ok=True)
+    # Add a DataFrame to store grid search results
+    grid_search_results = []
 
-    plt.figure(figsize=(10, 6))
-    plt.plot(pd.Series(rewards_basic).rolling(50).mean(), label='Basic REINFORCE')
-    plt.plot(pd.Series(rewards_baseline).rolling(50).mean(), label='REINFORCE + Baseline')
-    plt.plot(pd.Series(rewards_actor_critic).rolling(50).mean(), label='Actor-Critic')
-    plt.xlabel('Episode')
-    plt.ylabel('Rolling Avg Reward (50)')
-    plt.title('Comparison of REINFORCE versions')
-    plt.legend()
-    plt.savefig(comparison_dir / "comparison.png")
-    plt.show()
+    for lr in learn_rate:
+        for gamma in gamma_values:
+            for lrb in learn_rate_b:
+                expiriment_name = f"{episodes}_episodes,_lr_{lr}_lrb_{lrb}_gamma_{gamma}"
+                base_dir = Path("Assignment2/plots_A2_Q2")
+
+                # Environment setup
+                env_name = 'CartPole-v1'
+                env = gym.make(env_name)
+
+                # ----- Actor Critic -----
+                print("=== Training Actor-Critic ===")
+                agent_actor_critic = ActorCriticAgent(
+                    env=env,
+                    alpha_theta=lr,
+                    alpha_w=lrb,  # Using the same learning rate for simplicity
+                    gamma=gamma,
+                    episodes=episodes,
+                    early_stop=early_stop
+                )
+                rewards_actor_critic = agent_actor_critic.train()
+                agent_actor_critic.plot_results(save_dir=base_dir, model_name=f"{expiriment_name}/actor_critic")
+
+                # --- Basic REINFORCE ---
+                print("=== Training Basic REINFORCE ===")
+                agent_basic = ReinforceAgent(
+                    env=env,
+                    lr=lr,
+                    gamma=gamma,
+                    episodes=episodes,
+                    advantage=False,
+                    early_stop=early_stop
+                )
+                rewards_basic = agent_basic.train()
+
+                # --- REINFORCE with Baseline (Advantage) ---
+                print("\n=== Training REINFORCE with Baseline ===")
+                agent_baseline = ReinforceAgent(
+                    env=env,
+                    lr=lr,
+                    gamma=gamma,
+                    episodes=episodes,
+                    advantage=True,
+                    early_stop=early_stop
+                )
+                rewards_baseline = agent_baseline.train()
+
+                # Compare and log results
+                comparison_dir = Path(base_dir / expiriment_name)
+                comparison_dir.mkdir(parents=True, exist_ok=True)
+
+                plt.figure(figsize=(10, 6))
+                plt.plot(pd.Series(rewards_basic).rolling(50).mean(), label='Basic REINFORCE')
+                plt.plot(pd.Series(rewards_baseline).rolling(50).mean(), label='REINFORCE + Baseline')
+                plt.plot(pd.Series(rewards_actor_critic).rolling(50).mean(), label='Actor-Critic')
+                plt.xlabel('Episode')
+                plt.ylabel('Rolling Avg Reward')
+                plt.title('Comparison of REINFORCE versions')
+                plt.legend()
+                plt.savefig(comparison_dir / "comparison.png")
+
+                # Log results for grid search
+                for agent_name, rewards in zip(
+                    ['Basic REINFORCE', 'REINFORCE + Baseline', 'Actor-Critic'],
+                    [rewards_basic, rewards_baseline, rewards_actor_critic]
+                ):
+                    solved_episode = len(rewards) + 1
+                    grid_search_results.append({
+                        "Agent": agent_name,
+                        "Learning Rate": lr,
+                        "Gamma": gamma,
+                        "Episodes": episodes,
+                        "Solved Episode": solved_episode
+                    })
+
+    # Save grid search results to CSV
+    grid_search_df = pd.DataFrame(grid_search_results)
+    grid_search_df.sort_values(by="Solved Episode", inplace=True, na_position='last')
+    grid_search_df.to_csv("Assignment2/plots_A2_Q2/grid_search_results.csv", index=False)
+    print("Grid search results saved to Assignment2/plots_A2_Q2/grid_search_results.csv")

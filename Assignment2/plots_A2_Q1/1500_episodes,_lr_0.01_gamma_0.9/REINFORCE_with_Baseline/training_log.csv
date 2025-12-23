@@ -1,0 +1,16 @@
+episode,avg_reward_last100,solved (>=475)
+100,140.6,False
+200,174.1,False
+300,129.18,False
+400,133.93,False
+500,124.65,False
+600,112.89,False
+700,119.01,False
+800,118.89,False
+900,113.24,False
+1000,117.02,False
+1100,123.21,False
+1200,135.07,False
+1300,148.97,False
+1400,259.52,False
+1500,105.35,False
