@@ -6,7 +6,6 @@ import torch.optim as optim
 import matplotlib.pyplot as plt
 from pathlib import Path
 import pandas as pd
-import os
 
 # Policy Network - basic reinforce
 class PolicyNetwork(nn.Module):
@@ -187,7 +186,7 @@ class ReinforceAgent:
             plt.grid(True)
 
             plt.savefig(save_dir / "episode_rewards.png", dpi=300, bbox_inches='tight')
-            plt.show()
+            plt.close()
 
 def evaluate_agent(env, agent, eval_episodes=10):
     total_rewards = []
@@ -209,71 +208,70 @@ def evaluate_agent(env, agent, eval_episodes=10):
 
 if __name__ == "__main__":
     # Hyperparameters
-    learn_rate = [0.1, 0.01, 0.005, 0.001, 0.0005]
-    gamma = [0.99, 0.95, 0.9]
-    episodes = [1000,1500,2000]
+    learn_rate = [0.01, 0.001, 0.0005, 0.0001]
+    gamma = [0.99, 0.95]
+    episodes = 2000
     reward ={}
     # Add a DataFrame to store grid search results
     grid_search_results = []
 
     for lr in learn_rate:
         for g in gamma:
-            for ep in episodes:
-                expiriment_name = f"{ep}_episodes,_lr_{lr}_gamma_{g}"
+            expiriment_name = f"{episodes}_episodes,_lr_{lr}_gamma_{g}"
 
-                # Environment setup
-                env_name = 'CartPole-v1'
-                env = gym.make(env_name)
+            # Environment setup
+            env_name = 'CartPole-v1'
+            env = gym.make(env_name)
 
-                # --- 1. Basic REINFORCE ---
-                print("=== Training Basic REINFORCE ===")
-                agent_basic = ReinforceAgent(
-                    env=env,
-                    lr=lr,  # Fixed typo: learn_rate -> lr
-                    gamma=g,  # Fixed typo: gamma -> g
-                    episodes=ep,  # Fixed typo: episodes -> ep
-                    advantage=False
-                )
-                rewards_basic = agent_basic.train()
-                agent_basic.plot_results(save_dir="Assignment2/plots_A2_Q1", model_name=f"{expiriment_name}/Basic_REINFORCE")
-                
-                # --- 2. REINFORCE with Baseline (Advantage) ---
-                print("\n=== Training REINFORCE with Baseline ===")
-                agent_baseline = ReinforceAgent(
-                    env=env,
-                    lr=lr,
-                    gamma=g,
-                    episodes=ep,
-                    advantage=True
-                )
-                rewards_baseline = agent_baseline.train()
-                agent_baseline.plot_results(save_dir="Assignment2/plots_A2_Q1", model_name=f"{expiriment_name}/REINFORCE_with_Baseline")
-                
-                # Compare
-                # Ensure the directory exists before saving the comparison plot
-                comparison_dir = Path(f"Assignment2/plots_A2_Q1/{expiriment_name}")
-                comparison_dir.mkdir(parents=True, exist_ok=True)
+            # --- 1. Basic REINFORCE ---
+            print("=== Training Basic REINFORCE ===")
+            agent_basic = ReinforceAgent(
+                env=env,
+                lr=lr,  
+                gamma=g,  
+                episodes=episodes,  
+                advantage=False
+            )
+            rewards_basic = agent_basic.train()
+            agent_basic.plot_results(save_dir="Assignment2/plots_A2_Q1", model_name=f"{expiriment_name}/Basic_REINFORCE")
+            
+            # --- 2. REINFORCE with Baseline (Advantage) ---
+            print("\n=== Training REINFORCE with Baseline ===")
+            agent_baseline = ReinforceAgent(
+                env=env,
+                lr=lr,
+                gamma=g,
+                episodes=episodes,
+                advantage=True
+            )
+            rewards_baseline = agent_baseline.train()
+            agent_baseline.plot_results(save_dir="Assignment2/plots_A2_Q1", model_name=f"{expiriment_name}/REINFORCE_with_Baseline")
+            
+            # Compare
+            # Ensure the directory exists before saving the comparison plot
+            comparison_dir = Path(f"Assignment2/plots_A2_Q1/{expiriment_name}")
+            comparison_dir.mkdir(parents=True, exist_ok=True)
 
-                plt.figure(figsize=(10, 6))
-                plt.plot(pd.Series(rewards_basic).rolling(50).mean(), label='Basic REINFORCE')
-                plt.plot(pd.Series(rewards_baseline).rolling(50).mean(), label='REINFORCE + Baseline')
-                plt.xlabel('Episode')
-                plt.ylabel('Rolling Avg Reward')
-                plt.title('Comparison of REINFORCE versions')
-                plt.legend()
-                plt.savefig(comparison_dir / "comparison.png")
-                plt.show()
+            plt.figure(figsize=(10, 6))
+            plt.plot(pd.Series(rewards_basic).rolling(50).mean(), label='Basic REINFORCE')
+            plt.plot(pd.Series(rewards_baseline).rolling(50).mean(), label='REINFORCE + Baseline')
+            plt.xlabel('Episode')
+            plt.ylabel('Rolling Avg Reward')
+            plt.title('Comparison of REINFORCE versions')
+            plt.legend()
+            plt.savefig(comparison_dir / "comparison.png")
+            plt.close()
 
-                # Log results for grid search
-                for agent_name, rewards in zip(['Basic REINFORCE', 'REINFORCE + Baseline'], [rewards_basic, rewards_baseline]):
-                    solved_episode = next((i + 1 for i, r in enumerate(rewards) if r >= 475), None)
-                    grid_search_results.append({
-                        "Agent": agent_name,
-                        "Learning Rate": lr,
-                        "Gamma": g,
-                        "Episodes": ep,
-                        "Solved Episode": solved_episode
-                    })
+            # Log results for grid search
+            for agent_name, rewards in zip(['Basic REINFORCE', 'REINFORCE + Baseline'], [rewards_basic, rewards_baseline]):
+                solved_episode = next((i + 1 for i, r in enumerate(rewards) if np.mean(rewards[-100:]) >= 475), None)
+                grid_search_results.append({
+                    "Agent": agent_name,
+                    "Learning Rate": lr,
+                    "Gamma": g,
+                    "Episodes": episodes,
+                    "Solved Episode": solved_episode
+                })
 
     # Save grid search results to CSV
     grid_search_df = pd.DataFrame(grid_search_results)

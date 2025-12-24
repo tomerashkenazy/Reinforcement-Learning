@@ -193,10 +193,10 @@ def evaluate_agent(env, agent, eval_episodes=10):
 
 if __name__ == "__main__":
     # Hyperparameters
-    learn_rate = [0.01, 0.005, 0.001, 0.0005]
-    learn_rate_b = [0.01, 0.005, 0.001]
-    gamma_values = [0.99, 0.95]
-    episodes = 1500
+    learn_rate_b = [0.01, 0.001, 0.0001]
+    learn_rate = [0.01, 0.001, 0.0001]
+    gamma = [0.99, 0.95]
+    episodes = 2000
     early_stop = True
     
 
@@ -204,9 +204,9 @@ if __name__ == "__main__":
     grid_search_results = []
 
     for lr in learn_rate:
-        for gamma in gamma_values:
+        for gamma_val in gamma:
             for lrb in learn_rate_b:
-                expiriment_name = f"{episodes}_episodes,_lr_{lr}_lrb_{lrb}_gamma_{gamma}"
+                expiriment_name = f"{episodes}_episodes,_lr_{lr}_lrb_{lrb}_gamma_{gamma_val}"
                 base_dir = Path("Assignment2/plots_A2_Q2")
 
                 # Environment setup
@@ -219,7 +219,7 @@ if __name__ == "__main__":
                     env=env,
                     alpha_theta=lr,
                     alpha_w=lrb,  # Using the same learning rate for simplicity
-                    gamma=gamma,
+                    gamma=gamma_val,
                     episodes=episodes,
                     early_stop=early_stop
                 )
@@ -231,7 +231,7 @@ if __name__ == "__main__":
                 agent_basic = ReinforceAgent(
                     env=env,
                     lr=lr,
-                    gamma=gamma,
+                    gamma=gamma_val,
                     episodes=episodes,
                     advantage=False,
                     early_stop=early_stop
@@ -243,7 +243,7 @@ if __name__ == "__main__":
                 agent_baseline = ReinforceAgent(
                     env=env,
                     lr=lr,
-                    gamma=gamma,
+                    gamma=gamma_val,
                     episodes=episodes,
                     advantage=True,
                     early_stop=early_stop
@@ -274,7 +274,8 @@ if __name__ == "__main__":
                     grid_search_results.append({
                         "Agent": agent_name,
                         "Learning Rate": lr,
-                        "Gamma": gamma,
+                        "Learning rate b": lrb,
+                        "Gamma": gamma_val,
                         "Episodes": episodes,
                         "Solved Episode": solved_episode
                     })
