@@ -210,7 +210,7 @@ if __name__ == "__main__":
     # Hyperparameters
     learn_rate = [0.01, 0.001, 0.0005, 0.0001]
     gamma = [0.99, 0.95]
-    episodes = 2000
+    episodes = 1500
     reward ={}
     # Add a DataFrame to store grid search results
     grid_search_results = []
@@ -264,7 +264,7 @@ if __name__ == "__main__":
 
             # Log results for grid search
             for agent_name, rewards in zip(['Basic REINFORCE', 'REINFORCE + Baseline'], [rewards_basic, rewards_baseline]):
-                solved_episode = next((i + 1 for i, r in enumerate(rewards) if np.mean(rewards[-100:]) >= 475), None)
+                solved_episode = len(rewards)
                 grid_search_results.append({
                     "Agent": agent_name,
                     "Learning Rate": lr,

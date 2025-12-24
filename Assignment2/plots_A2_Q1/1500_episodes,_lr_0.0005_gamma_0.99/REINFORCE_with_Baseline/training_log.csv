@@ -1,13 +1,14 @@
 episode,avg_reward_last100,solved (>=475)
-100,24.0,False
-200,35.41,False
-300,53.13,False
-400,98.67,False
-500,182.56,False
-600,272.73,False
-700,389.49,False
-800,437.08,False
-900,462.03,False
-1000,461.94,False
-1100,470.17,False
-1200,475.19,True
+100,24.8,False
+200,38.51,False
+300,64.32,False
+400,141.95,False
+500,220.4,False
+600,269.87,False
+700,321.8,False
+800,389.36,False
+900,399.55,False
+1000,447.85,False
+1100,458.39,False
+1200,456.84,False
+1300,476.46,True

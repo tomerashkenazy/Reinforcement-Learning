@@ -196,7 +196,7 @@ if __name__ == "__main__":
     learn_rate_b = [0.01, 0.001, 0.0001]
     learn_rate = [0.01, 0.001, 0.0001]
     gamma = [0.99, 0.95]
-    episodes = 2000
+    episodes = 1500
     early_stop = True
     
 
@@ -270,7 +270,7 @@ if __name__ == "__main__":
                     ['Basic REINFORCE', 'REINFORCE + Baseline', 'Actor-Critic'],
                     [rewards_basic, rewards_baseline, rewards_actor_critic]
                 ):
-                    solved_episode = len(rewards) + 1
+                    solved_episode = len(rewards)
                     grid_search_results.append({
                         "Agent": agent_name,
                         "Learning Rate": lr,
