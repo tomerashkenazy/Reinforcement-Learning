@@ -1,0 +1,2 @@
+Learning Rate,Learning rate b,Gamma,Episodes,Solved Episode
+0.0001,0.01,0.99,1500,400
