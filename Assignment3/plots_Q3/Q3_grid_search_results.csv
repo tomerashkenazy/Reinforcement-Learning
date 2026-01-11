@@ -1,0 +1,17 @@
+Experiment,LR,Critic LR,Gamma,Solved Episodes,Final Reward
+"{Acrobot,MC}->CartPole",0.01,0.01,0.99,1000,9.43
+"{CartPole,Acrobot}->MC",0.01,0.01,0.99,1000,-200.0
+"{Acrobot,MC}->CartPole",0.01,0.001,0.99,1000,9.35
+"{CartPole,Acrobot}->MC",0.01,0.001,0.99,1000,-200.0
+"{Acrobot,MC}->CartPole",0.01,0.01,0.95,1000,9.34
+"{CartPole,Acrobot}->MC",0.01,0.01,0.95,1000,-200.0
+"{Acrobot,MC}->CartPole",0.01,0.001,0.95,1000,9.42
+"{CartPole,Acrobot}->MC",0.01,0.001,0.95,1000,-200.0
+"{Acrobot,MC}->CartPole",0.001,0.01,0.99,1000,9.41
+"{CartPole,Acrobot}->MC",0.001,0.01,0.99,1000,-200.0
+"{Acrobot,MC}->CartPole",0.001,0.001,0.99,1000,10.37
+"{CartPole,Acrobot}->MC",0.001,0.001,0.99,1000,-180.19
+"{Acrobot,MC}->CartPole",0.001,0.01,0.95,1000,9.36
+"{CartPole,Acrobot}->MC",0.001,0.01,0.95,1000,-200.0
+"{Acrobot,MC}->CartPole",0.001,0.001,0.95,1000,9.26
+"{CartPole,Acrobot}->MC",0.001,0.001,0.95,1000,-200.0

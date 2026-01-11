@@ -1,0 +1,3 @@
+env,episodes_to_solve,solved,duration_seconds,final_avg_reward,total_episodes,transfer_task
+CartPole-v1,1000,False,110.92524290084839,9.39,1000,Acrobot->CartPole
+MountainCar-v0,1000,False,137.06418704986572,-116.26,1000,CartPole->MountainCar
