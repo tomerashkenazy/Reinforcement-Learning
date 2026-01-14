@@ -10,7 +10,7 @@ import pandas as pd
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
-SOLVE_THRESHOLDS = {"MountainCar-v0": -110}
+SOLVE_THRESHOLDS = {"MountainCarContinuous-v0": -110}
 
 
 # ============ NETWORKS ============
@@ -67,7 +67,7 @@ class ActorCriticAgent:
 
     def pad_state(self, s):
         s = np.pad(s, (0, self.state_size - len(s)))
-        if self.env.spec.id == "MountainCar-v0":
+        if self.env == "MountainCarContinuous-v0":
             s[1] *= 100    # amplify velocity
         return s
 
@@ -81,7 +81,7 @@ class ActorCriticAgent:
 
 
     def train(self):
-        print("Starting padded MountainCar training...")
+        print("Starting padded MountainCarContinuous-v0 training...")
         for ep in range(self.episodes):
             s,_ = self.env.reset()
             s = self.pad_state(s)
@@ -90,7 +90,7 @@ class ActorCriticAgent:
 
             while not done:
                 a, logp, entropy = self.select_action(s)
-                s2, r, term, trunc, _ = self.env.step(a)
+                s2, r, term, trunc, _ = self.env.step([a])
                 done = term or trunc
                 s2 = self.pad_state(s2)
 
@@ -106,16 +106,16 @@ class ActorCriticAgent:
                 v2 = self.critic(s2_t).detach() if not done else torch.tensor(0.).to(device)
 
                 delta = r_shaped + self.gamma * v2 - v
-                advantage = (delta - delta.mean()) / (delta.std() + 1e-8)
+                ##advantage = (delta - delta.mean()) / (delta.std() + 1e-8)
 
                 # Actor
-                actor_loss = -(logp * advantage.detach() + 0.01 * entropy)
+                actor_loss = -(logp * delta.detach() + 0.01 * entropy)
                 self.opt_actor.zero_grad()
                 actor_loss.backward()
                 self.opt_actor.step()
 
                 # Critic
-                critic_loss = delta.pow(2)
+                critic_loss = (delta).pow(2)
                 self.opt_critic.zero_grad()
                 critic_loss.backward()
                 self.opt_critic.step()
@@ -128,8 +128,8 @@ class ActorCriticAgent:
             if (ep+1) % 100 == 0:
                 avg = np.mean(self.rewards[-100:])
                 print(f"Episode {ep+1} | Avg100: {avg:.2f}")
-                if avg >= -110:
-                    print("🏁 MountainCar solved!")
+                if avg >= 85:
+                    print("🏁 MountainCarContinuous solved!")
                     break
 
         return self.rewards
@@ -142,11 +142,11 @@ class ActorCriticAgent:
         # Save Dataframe of training log
         print(f"Training log saved to {save_dir / 'training_log.csv'}")
         
-        if len(self.episode_rewards) > 0:
-            episodes = np.arange(1, len(self.episode_rewards) + 1)
+        if len(self.rewards) > 0:
+            episodes = np.arange(1, len(self.rewards) + 1)
 
             plt.figure()
-            plt.plot(episodes, self.episode_rewards, linewidth=0.6)  # Adjusted line width
+            plt.plot(episodes, self.rewards, linewidth=0.6)  # Adjusted line width
             plt.xlabel("Episode")
             plt.ylabel("Reward")
             plt.title(f"Reward per Episode [{model_name}]")
@@ -158,17 +158,80 @@ class ActorCriticAgent:
     def save_model(self, save_dir):
         save_dir = Path(save_dir)
         save_dir.mkdir(parents=True, exist_ok=True)
-        torch.save(self.actor_network.state_dict(), save_dir / "actor_net.pth")
-        torch.save(self.critic_network.state_dict(), save_dir / "critic_net.pth")
+        torch.save(self.actor.state_dict(), save_dir / "actor_net.pth")
+        torch.save(self.critic.state_dict(), save_dir / "critic_net.pth")
 
 
 
 if __name__ == "__main__":
-    env = gym.make("MountainCar-v0")
-    agent = ActorCriticAgent(env)
-    agent.train()
-    agent.plot_results()
-    agent.save_model()
+    # env = gym.make("MountainCarContinuous-v0")
+    # agent = ActorCriticAgent(env)
+    # agent.train()
+    # agent.plot_results()
+    # agent.save_model(save_dir="/home/ohadshee/Desktop/RL/Reinforcement-Learning/plots_A3_Q3")
 
 
     
+    # Hyperparameters
+    learn_rate_b =  [0.01,0.0001]
+    learn_rate = [0.001,0.0001]
+    gamma = [1,0.99,0.999]
+    episodes = 1000
+    early_stop = True
+    env_names = ['MountainCarContinuous-v0']#['Acrobot-v1', 'MountainCar-v0']
+    grid_acrobot_results = []
+    grid_mountaincar_results = []
+
+
+
+    for lr in learn_rate:
+        for gamma_val in gamma:
+            for lrb in learn_rate_b:
+                for env_name in env_names:
+                    expiriment_name = f"{episodes}_episodes,_lr_{lr}_lrb_{lrb}_gamma_{gamma_val}_env_{env_name}"
+                    base_dir = Path("/home/ohadshee/Desktop/RL/Reinforcement-Learning/Assignment_3/plots_improved_continuous")
+
+                    # Environment setup
+                    
+                    env = gym.make(env_name)
+
+                    
+                    agent_actor_critic = ActorCriticAgent(
+                        env=env,
+                        lr_actor=lr,
+                        lr_critic=lrb,  # Using the same learning rate for simplicity
+                        gamma=gamma_val,
+                        episodes=episodes,
+                    )
+                    rewards = agent_actor_critic.train()
+                    agent_actor_critic.plot_results(save_dir=base_dir, model_name=f"{expiriment_name}/actor_critic")
+                    agent_actor_critic.save_model(save_dir=base_dir / expiriment_name / f"actor_critic_{env_name}")
+                    # if env_name == 'CartPole-v1':
+                    #     grid_carpole_results.append({
+                    #         "Learning Rate": lr,
+                    #         "Learning rate b": lrb,
+                    #         "Gamma": gamma_val,
+                    #         "Episodes": episodes,
+                    #         "Solved Episode": len(rewards)
+                    #     })
+
+                    grid_mountaincar_results.append({
+                        "Learning Rate": lr,
+                        "Learning rate b": lrb,
+                        "Gamma": gamma_val,
+                        "Episodes": episodes,
+                        "Solved Episode": len(rewards)
+                    })
+                    
+                    
+
+    grids = {
+        "MountainCarContinuous-v0": grid_mountaincar_results
+    }
+
+    for env_name, grid_results in grids.items():
+        grid_search_df = pd.DataFrame(grid_results)
+        grid_search_df.sort_values(by="Solved Episode", inplace=True, na_position='last')
+        save_path = Path("/home/ohadshee/Desktop/RL/Reinforcement-Learning/Assignment_3/plots_improved_continuous") / f"{env_name}_grid_search_results.csv"
+        grid_search_df.to_csv(save_path, index=False)
+        print(f"Grid search results for {env_name} saved to {save_path}")

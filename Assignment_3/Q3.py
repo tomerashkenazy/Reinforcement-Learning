@@ -16,7 +16,7 @@ print(f"Using device: {device}")
 SOLVE_THRESHOLDS = {
     "CartPole-v1": 475,
     "Acrobot-v1": -100,
-    "MountainCar-v0": -115,
+    "MountainCarContinuous-v0": 90,
 }
 
 learn_rate = [0.01, 0.001]
@@ -185,7 +185,7 @@ class ProgressiveAgent:
             state, _ = self.env.reset()
             state = self.preprocess_state(state) 
             
-            if self.env_name == 'MountainCar-v0':
+            if self.env_name == 'MountainCarContinuous-v0':
                 state[1] *= 100 # Scaling hack
 
             done = False
@@ -194,13 +194,14 @@ class ProgressiveAgent:
 
             while not done:
                 action, log_prob = self.select_action(state)
+                action = [action] if self.env_name == 'MountainCarContinuous-v0' else action
                 next_state, reward, terminated, truncated, _ = self.env.step(action)
                 done = terminated or truncated
                 total_reward += reward
 
                 # Preprocess Next State
                 next_state = self.preprocess_state(next_state)
-                if self.env_name == 'MountainCar-v0':
+                if self.env_name == 'MountainCarContinuous-v0':
                     next_state[1] *= 100
                     # Shaping
                     shaped_reward = reward + abs(next_state[1])*100 + next_state[0]
@@ -260,12 +261,12 @@ def run_progressive_experiment():
     experiments = [
     ("{Acrobot,MC}->CartPole", "CartPole-v1",
      ["Assignment_3/transfer_models/actor_critic_Acrobot-v1/actor_net.pth",
-      "Assignment_3/transfer_models/actor_critic_MountainCar-v0/actor_net.pth"],
+      "Assignment_3/transfer_models/actor_critic_MountainCarContinuous-v0/actor_net.pth"],
      ["Assignment_3/transfer_models/actor_critic_Acrobot-v1/critic_net.pth",
-      "Assignment_3/transfer_models/actor_critic_MountainCar-v0/critic_net.pth"],
+      "Assignment_3/transfer_models/actor_critic_MountainCarContinuous-v0/critic_net.pth"],
      [3,3]),
 
-    ("{CartPole,Acrobot}->MC", "MountainCar-v0",
+    ("{CartPole,Acrobot}->MC", "MountainCarContinuous-v0",
      ["Assignment_3/transfer_models/actor_critic_CartPole-v1/actor_net.pth",
       "Assignment_3/transfer_models/actor_critic_Acrobot-v1/actor_net.pth"],
      ["Assignment_3/transfer_models/actor_critic_CartPole-v1/critic_net.pth",
@@ -286,8 +287,9 @@ def run_progressive_experiment():
                     src_actors, src_critics = [], []
 
                     for ap, cp, sa in zip(actor_paths, critic_paths, src_actions):
-                        src_actors.append(load_and_modify_model(ActorNetwork, ap, MAX_STATE_DIM, sa, env.action_space.n))
-                        src_critics.append(load_and_modify_model(CriticNetwork, cp, MAX_STATE_DIM, sa, env.action_space.n))
+                        action_size = env.action_space.n if tgt != 'MountainCarContinuous-v0' else env.action_space.shape[0]
+                        src_actors.append(load_and_modify_model(ActorNetwork, ap, MAX_STATE_DIM, sa, action_size))
+                        src_critics.append(load_and_modify_model(CriticNetwork, cp, MAX_STATE_DIM, sa, action_size))
 
                     agent = ProgressiveAgent(env, src_actors, src_critics, lr=lr, gamma=gamma, env_name=tgt)
                     stats, rewards = agent.train()

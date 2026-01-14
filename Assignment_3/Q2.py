@@ -16,16 +16,16 @@ print(f"Using device: {device}")
 SOLVE_THRESHOLDS = {
     "CartPole-v1": 475,
     "Acrobot-v1": -100,
-    "MountainCar-v0": -115,
+    'MountainCarContinuous-v0': 90,
 }
 
 # Mapping of max state dimensions to ensure compatibility
 # We assume the "Universal" model input size is 6 (size of Acrobot)
 MAX_STATE_DIM = 6 
 
-learn_rate_b = [0.1, 0.01, 0.001]      # Critic LR multiplier
+learn_rate_b = [0.01, 0.001]      # Critic LR multiplier
 learn_rate = [0.01, 0.001, 0.0001]    # Actor LR
-gamma_grid  = [0.99, 0.95]
+gamma_grid  = [1,0.99, 0.95]
 episodes = 1000
 early_stop = True     # Already built into your training
 
@@ -160,8 +160,8 @@ class FineTunedAgent:
             state, _ = self.env.reset()
             state = self.preprocess_state(state) # PAD STATE
             
-            # MountainCar specific initialization hack from Q1
-            if self.env_name == 'MountainCar-v0':
+            #MountainCar specific initialization hack from Q1
+            if self.env_name == 'MountainCarContinuous-v0':
                 state[1] *= 100
 
             done = False
@@ -170,13 +170,14 @@ class FineTunedAgent:
 
             while not done:
                 action, log_prob = self.select_action(state)
+                action = [action] if self.env_name == 'MountainCarContinuous-v0' else action
                 next_state, reward, terminated, truncated, _ = self.env.step(action)
                 done = terminated or truncated
                 total_reward += reward
 
                 # Preprocess Next State
                 next_state = self.preprocess_state(next_state)
-                if self.env_name == 'MountainCar-v0':
+                if self.env_name == 'MountainCarContinuous-v0':
                     next_state[1] *= 100
                     # Shaped Reward for MountainCar
                     velocity_bonus = abs(next_state[1]) * 100 
@@ -244,12 +245,12 @@ def run_fine_tuning_experiment():
     base_save_path.mkdir(parents=True, exist_ok=True)
 
     experiments = [
-        ("Acrobot-v1", "CartPole-v1",
-         "Assignment_3/transfer_models/actor_critic_Acrobot-v1/actor_net.pth",
-         "Assignment_3/transfer_models/actor_critic_Acrobot-v1/critic_net.pth",
-         3),
+        # ("Acrobot-v1", "CartPole-v1",
+        #  "Assignment_3/transfer_models/actor_critic_Acrobot-v1/actor_net.pth",
+        #  "Assignment_3/transfer_models/actor_critic_Acrobot-v1/critic_net.pth",
+        #  3),
 
-        ("CartPole-v1", "MountainCar-v0",
+        ("CartPole-v1", "MountainCarContinuous-v0",
          "Assignment_3/transfer_models/actor_critic_CartPole-v1/actor_net.pth",
          "Assignment_3/transfer_models/actor_critic_CartPole-v1/critic_net.pth",
          3)

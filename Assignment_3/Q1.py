@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 
 # Check for CUDA availability
-device = "cpu"
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
 SOLVE_THRESHOLDS = {
@@ -20,10 +20,11 @@ SOLVE_THRESHOLDS = {
 
 # actor Network - basic reinforce
 class ActorNetwork(nn.Module):
-    def __init__(self, state_size, action_size, hidden_size=128):
+    def __init__(self, state_size, action_size, hidden_size=64): # Modified hidden size to 32 from 128
         super(ActorNetwork, self).__init__()
         self.fc1 = nn.Linear(state_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, action_size)
+
 
     def forward(self, x):
         x = torch.relu(self.fc1(x))
@@ -32,10 +33,11 @@ class ActorNetwork(nn.Module):
     
 # critic Network - value function approximator
 class CriticNetwork(nn.Module):
-    def __init__(self, state_size, hidden_size=128):
+    def __init__(self, state_size, hidden_size=64): # Modified hidden size to 32 from 128
         super(CriticNetwork, self).__init__()
         self.fc1 = nn.Linear(state_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, 1)
+
 
     def forward(self, x):
         x = torch.relu(self.fc1(x))
@@ -49,6 +51,7 @@ class ActorCriticAgent:
         self.gamma = gamma
         self.episodes = episodes
         self.early_stop = early_stop
+        self.df = pd.DataFrame()
 
         self.state_size = 6 # Modified for Acrobot-v1 the biggest state space
         self.action_size = 3 # Modified for Acrobot-v1 the biggest action space
@@ -89,6 +92,7 @@ class ActorCriticAgent:
                 state = np.pad(state, (0, 2), mode='constant')
             if self.env_name == 'MountainCar-v0':
                 state = np.pad(state, (0, 4), mode='constant')
+                
                 
             done = False
             total_reward = 0
@@ -181,6 +185,7 @@ class ActorCriticAgent:
 
         # Save Dataframe of training log
         self.df.to_csv(save_dir / "training_log.csv", index=False)
+        print(f"Training log saved to {save_dir / 'training_log.csv'}")
         
         if len(self.episode_rewards) > 0:
             episodes = np.arange(1, len(self.episode_rewards) + 1)
@@ -205,11 +210,11 @@ class ActorCriticAgent:
 if __name__ == "__main__":
     # Hyperparameters
     learn_rate_b =  [0.1, 0.01, 0.001]
-    learn_rate = [0.01, 0.001, 0.0001]
-    gamma = [0.99, 0.95]
-    episodes = 1000
+    learn_rate = [0.05, 0.001, 0.0001,0.000001]
+    gamma = [1, 0.95,0.9]
+    episodes = 700
     early_stop = True
-    env_names = ['Acrobot-v1', 'MountainCar-v0']
+    env_names = ['MountainCar-v0']#['Acrobot-v1', 'MountainCar-v0']
     grid_acrobot_results = []
     grid_mountaincar_results = []
     
