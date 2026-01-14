@@ -6,6 +6,7 @@ import torch.optim as optim
 import matplotlib.pyplot as plt
 from pathlib import Path
 import pandas as pd
+import time
 
 # Check for CUDA availability
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -86,8 +87,10 @@ class ActorCriticAgent:
         print(f"Starting {self.env_name} training...")
 
         self.training_log = []   # store progress logs
+        self.episode_times = []   # track time for each episode
 
         for episode in range(self.episodes):
+            episode_start_time = time.time()
 
             state, _ = self.env.reset()
             if self.env_name == 'CartPole-v1':
@@ -170,13 +173,16 @@ class ActorCriticAgent:
 
                 state = next_state
 
-            # Store reward for this episode
+            # Record episode time and reward
+            episode_time = time.time() - episode_start_time
+            self.episode_times.append(episode_time)
             self.episode_rewards.append(total_reward)
 
             # -------- LOGGING (unchanged) --------
             if (episode + 1) % 100 == 0:
                 avg_reward = np.mean(self.episode_rewards[-100:])
-                print(f"Episode {episode+1}/{self.episodes} | Last 100 Avg Reward: {avg_reward:.2f}")
+                total_time_100 = np.sum(self.episode_times[-100:])
+                print(f"Episode {episode+1}/{self.episodes} | Last 100 Avg Reward: {avg_reward:.2f} | Time for 100 Episodes: {total_time_100:.2f}s")
 
                 threshold = SOLVE_THRESHOLDS[self.env_name]
                 solved = avg_reward >= threshold
@@ -184,6 +190,7 @@ class ActorCriticAgent:
                 self.training_log.append({
                     "episode": episode + 1,
                     "avg_reward_last100": float(avg_reward),
+                    "time_last100_episodes": float(total_time_100),
                     "solved": solved,
                     "solve_threshold": threshold,
                     'episode_rewards': self.episode_rewards
@@ -228,9 +235,9 @@ class ActorCriticAgent:
 
 if __name__ == "__main__":
     # Hyperparameters
-    learn_rate_b =  [0.01,0.0001]
-    learn_rate = [0.001,0.0001]
-    gamma = [1,0.99,0.999]
+    learn_rate_b =  [0.01]
+    learn_rate = [0.001]
+    gamma = [1]
     episodes = 1000
     early_stop = True
     env_names = ['MountainCarContinuous-v0']#['Acrobot-v1', 'MountainCar-v0']

@@ -180,8 +180,11 @@ class ProgressiveAgent:
         print(f"Starting Progressive Training on {self.env_name}...")
         
         solved_episode = -1
+        self.episode_times = []   # track time for each episode
 
         for episode in range(self.episodes):
+            episode_start_time = time.time()
+            
             state, _ = self.env.reset()
             state = self.preprocess_state(state) 
             
@@ -233,11 +236,15 @@ class ProgressiveAgent:
                 I *= self.gamma
                 state = next_state
 
+            # Record episode time and reward
+            episode_time = time.time() - episode_start_time
+            self.episode_times.append(episode_time)
             self.episode_rewards.append(total_reward)
 
             if (episode + 1) % 100 == 0:
                 avg_reward = np.mean(self.episode_rewards[-100:])
-                print(f"Episode {episode+1} | Avg Reward: {avg_reward:.2f}")
+                total_time_100 = np.sum(self.episode_times[-100:])
+                print(f"Episode {episode+1} | Avg Reward: {avg_reward:.2f} | Time for 100 Episodes: {total_time_100:.2f}s")
                 
                 if avg_reward >= SOLVE_THRESHOLDS[self.env_name]:
                     print(f"--- {self.env_name} SOLVED in {episode+1} episodes! ---")

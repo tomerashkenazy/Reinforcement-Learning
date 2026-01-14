@@ -23,9 +23,9 @@ SOLVE_THRESHOLDS = {
 # We assume the "Universal" model input size is 6 (size of Acrobot)
 MAX_STATE_DIM = 6 
 
-learn_rate_b = [0.01, 0.001]      # Critic LR multiplier
-learn_rate = [0.01, 0.001, 0.0001]    # Actor LR
-gamma_grid  = [1,0.99, 0.95]
+learn_rate_b =[0.01] #[0.01, 0.001]      # Critic LR multiplier
+learn_rate = [0.0001] #[0.01, 0.001, 0.0001]    # Actor LR
+gamma_grid  = [1]#[1,0.99, 0.95]
 episodes = 1000
 early_stop = True     # Already built into your training
 
@@ -155,8 +155,11 @@ class FineTunedAgent:
         print(f"Starting Fine-Tuning on {self.env_name}...")
         
         solved_episode = -1
+        self.episode_times = []   # track time for each episode
 
         for episode in range(self.episodes):
+            episode_start_time = time.time()
+            
             state, _ = self.env.reset()
             state = self.preprocess_state(state) # PAD STATE
             
@@ -213,12 +216,16 @@ class FineTunedAgent:
                 I *= self.gamma
                 state = next_state
 
+            # Record episode time and reward
+            episode_time = time.time() - episode_start_time
+            self.episode_times.append(episode_time)
             self.episode_rewards.append(total_reward)
 
             # Logging & Solved Check
             if (episode + 1) % 100 == 0:
                 avg_reward = np.mean(self.episode_rewards[-100:])
-                print(f"Episode {episode+1} | Avg Reward: {avg_reward:.2f}")
+                total_time_100 = np.sum(self.episode_times[-100:])
+                print(f"Episode {episode+1} | Avg Reward: {avg_reward:.2f} | Time for 100 Episodes: {total_time_100:.2f}s")
                 
                 if avg_reward >= SOLVE_THRESHOLDS[self.env_name]:
                     print(f"--- {self.env_name} SOLVED in {episode+1} episodes! ---")
